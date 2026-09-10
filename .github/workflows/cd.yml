@@ -32,15 +32,19 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       version: ${{ steps.version.outputs.version }}
+      image: ${{ steps.version.outputs.image }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Get version
+      - name: Get version and image name
         id: version
         run: |
           VERSION=${GITHUB_REF_NAME#v}
+          IMAGE=$(echo "ghcr.io/${{ github.repository }}" | tr '[:upper:]' '[:lower:]')
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "image=$IMAGE" >> "$GITHUB_OUTPUT"
+          echo "Building $IMAGE:$VERSION"
 
       - name: Login to GHCR
         uses: docker/login-action@v3
@@ -52,14 +56,14 @@ jobs:
       - name: Build Docker image
         run: |
           docker build \
-            -t ghcr.io/${{ github.repository }}:${{ steps.version.outputs.version }} \
-            -t ghcr.io/${{ github.repository }}:latest \
+            -t ${{ steps.version.outputs.image }}:${{ steps.version.outputs.version }} \
+            -t ${{ steps.version.outputs.image }}:latest \
             .
 
       - name: Push Docker images
         run: |
-          docker push ghcr.io/${{ github.repository }}:${{ steps.version.outputs.version }}
-          docker push ghcr.io/${{ github.repository }}:latest
+          docker push ${{ steps.version.outputs.image }}:${{ steps.version.outputs.version }}
+          docker push ${{ steps.version.outputs.image }}:latest
 
   deploy-staging:
     needs: build
@@ -76,14 +80,14 @@ jobs:
 
       - name: Deploy to staging
         run: |
-          docker pull ghcr.io/${{ github.repository }}:${{ needs.build.outputs.version }}
+          docker pull ${{ needs.build.outputs.image }}:${{ needs.build.outputs.version }}
           docker stop mlops-api || true
           docker rm mlops-api || true
           docker run -d \
             --name mlops-api \
             -p 5000:5000 \
             -e APP_ENV=staging \
-            ghcr.io/${{ github.repository }}:${{ needs.build.outputs.version }}
+            ${{ needs.build.outputs.image }}:${{ needs.build.outputs.version }}
 
       - name: Smoke test
         run: |
@@ -107,14 +111,14 @@ jobs:
 
       - name: Deploy to production
         run: |
-          docker pull ghcr.io/${{ github.repository }}:${{ needs.build.outputs.version }}
+          docker pull ${{ needs.build.outputs.image }}:${{ needs.build.outputs.version }}
           docker stop mlops-api || true
           docker rm mlops-api || true
           docker run -d \
             --name mlops-api \
             -p 5000:5000 \
             -e APP_ENV=production \
-            ghcr.io/${{ github.repository }}:${{ needs.build.outputs.version }}
+            ${{ needs.build.outputs.image }}:${{ needs.build.outputs.version }}
 
       - name: Verify production
         run: |
